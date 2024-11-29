@@ -4,3 +4,5 @@
 ![6-9]/*/-*.yml
 vsite/*.env
 vsite/!test.env
+variants-override.txt
+.jq-template.awk

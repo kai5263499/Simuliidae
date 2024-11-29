@@ -7,9 +7,9 @@
 # by default, do local building, but we could build from the blackfly repository when using automated build processes.
 ARG REPOSITORY_FROM=
 # Requires the VARIANT_TAG argument, which may be either the base or non-base version [??]
-ARG VARIANT_TAG=
+ARG VARIANT_TAG=latest
 # Step 1. build the basic web service, a slightly extended version of the corresonding wordpress modified base image.
-FROM ${REPOSITORY_FROM}wordpress:base-${VARIANT_TAG} as vhttp-base
+FROM ${REPOSITORY_FROM}wordpress:${VARIANT_TAG} AS vhttp-base
 # We create a wordpress user to own all the code, using 1978 as the uid
 RUN useradd -u 1978 -g www-data -ms /bin/bash wordpress
 # use the default document root inherited from php/apache
@@ -44,7 +44,7 @@ CMD ["apache2-foreground"]
 # Step 2: build a basic admin service, adding some bits to the vhttp-base
 # Admin runs sshd as it's CMD by default, but can be used to, e.g. do automated setup.
 # We'll first build admin-minimal that we'll use later as a base for admin-build
-FROM vhttp-base as admin-minimal
+FROM vhttp-base AS admin-minimal
 RUN apt-get update \
   && apt-get install -y mariadb-client sudo vim less zip unzip netcat-traditional ssh rsync openssh-server git \
   && apt-get purge -y
@@ -68,13 +68,13 @@ RUN chmod 775 /entrypoint-sshd.sh && mkdir -p /var/run/sshd
 ENTRYPOINT ["/entrypoint-sshd.sh"]
 CMD ["/entrypoint-sshd.sh"]
 # Step 2.5 Add in parts for the admin container that are not needed in the admin-crm or admin-cms images
-FROM admin-minimal as admin-base
+FROM admin-minimal AS admin-base
 # i.e. administrative tools that would be needed for installing or upgrading civicrm and wordpress in a base image
 # TODO: see the Dockerfile for stuff after the base is built?
 # RUN wp --allow-root --version
 # Step 3: from the admin-base, add the CMS code, and then copy it over to the vhttp-base as the vhttp-cms
 # This replaces the magic in the docker-entrypoint.sh script that the wordpress image uses.
-FROM admin-base as admin-build-cms
+FROM admin-base AS admin-build-cms
 # copied from the wordpress Dockerfile, the non-cli bits - build it in /usr/src and then use the CP
 # to get it in the admin-cms image
 RUN set -eux; \
@@ -110,7 +110,7 @@ RUN set -eux; \
 VOLUME /var/www/html
 
 # Step 4: from the admin-build-cms, add the crm files
-FROM admin-build-cms as admin-build-crm
+FROM admin-build-cms AS admin-build-crm
 ENV CIVICRM_VERSION {{ .civicrmVersion }}
 
 RUN mkdir /var/www/html/wp-content/uploads
@@ -128,11 +128,11 @@ RUN chown -R wordpress:www-data /var/www/html/wp-content/plugins/civicrm;
 
 # Step 5-6-7-8
 # Buld the cms and crm flavours of the vhttp and admin by simple cp
-FROM vhttp-base as vhttp-cms
+FROM vhttp-base AS vhttp-cms
 COPY --from=admin-build-cms /var/www/html .
-FROM vhttp-base as vhttp-crm
+FROM vhttp-base AS vhttp-crm
 COPY --from=admin-build-crm /var/www/html .
-FROM admin-minimal as admin-cms
+FROM admin-minimal AS admin-cms
 COPY --from=admin-build-cms /var/www/html .
-FROM admin-minimal as admin-crm
+FROM admin-minimal AS admin-crm
 COPY --from=admin-build-crm /var/www/html .
